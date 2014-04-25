@@ -24,4 +24,5 @@ type MultiEchoServer interface {
 	// Close shuts down the server. All client connections should be closed immediately
 	// and any goroutines running in the background should be signaled to return.
 	Close()
+	
 }

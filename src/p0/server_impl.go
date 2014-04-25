@@ -7,19 +7,40 @@ import (
 	"net"
 	"log"
 	"strconv"
+	"io/ioutil"
+	"os"
 )
+
+type Message struct {
+	msg string
+	conn net.Conn
+}
 	
 type multiEchoServer struct {
 	// TODO: implement this!
 	address string
 	numClients int
+	inMesg chan Message
+	clients  []net.Conn
 }
 
 // New creates and returns (but does not start) a new MultiEchoServer.
 func New() MultiEchoServer {
 	// TODO: implement this!
 	var MES MultiEchoServer
-	serv := multiEchoServer{address : "1.0.0.0"}
+	serv := multiEchoServer{address : "127.0.0.1",inMesg: make(chan Message)}
+	go func(svr multiEchoServer) {
+		for {
+			msg := <-svr.inMesg
+			for _,cl:= range svr.clients {
+				if cl!=msg.conn {
+					_,err:=cl.Write([]byte(msg.msg))
+					checkError(err)
+				}
+			}
+		}
+	}(serv)
+
 	MES = &serv
 	
 	if(MES!=nil) {
@@ -41,10 +62,26 @@ func (mes *multiEchoServer) Start(port int) error {
 	}
 	
 	for {
-		_,err := l.Accept()
+		conn,err := l.Accept()
 		if(err!=nil) {
 			log.Fatal(err)
+			return err
 		}
+		go func(c net.Conn) {
+			mes.clients = append(mes.clients,c)
+			go func(c net.Conn) {
+				for {
+					res,err:= ioutil.ReadAll(c)
+					checkError(err)
+					temp := Message{msg: string(res),conn: c}
+					go func(m Message) { 
+						mes.inMesg <- m	
+					}(temp)
+				}
+			}(c)
+		}(conn)
+
+		mes.numClients++;
 	}
 	return nil
 }
@@ -59,3 +96,9 @@ func (mes *multiEchoServer) Count() int {
 }
 
 // TODO: add additional methods/functions below!
+
+func checkError(err error) {
+	if(err!=nil) {
+		fmt.Fprintf(os.Stderr,"Error : %s",err.Error())
+	}
+}

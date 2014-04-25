@@ -7,41 +7,44 @@ import (
 	"net"
 	"log"
 	"strconv"
-	"io/ioutil"
 	"os"
+	"bufio"
 )
 
 type Message struct {
 	msg string
 	conn net.Conn
 }
+
+type Clients struct {
+	conn net.Conn
+	outMesg chan string
+}
 	
 type multiEchoServer struct {
-	// TODO: implement this!
 	address string
 	numClients int
 	inMesg chan Message
-	clients  []net.Conn
+	clients  []Clients
 }
 
 // New creates and returns (but does not start) a new MultiEchoServer.
 func New() MultiEchoServer {
 	// TODO: implement this!
 	var MES MultiEchoServer
-	serv := multiEchoServer{address : "127.0.0.1",inMesg: make(chan Message)}
-	go func(svr multiEchoServer) {
+	serv := &multiEchoServer{address : "127.0.0.1",inMesg: make(chan Message)}
+	go func(svr *multiEchoServer) {
 		for {
 			msg := <-svr.inMesg
 			for _,cl:= range svr.clients {
-				if cl!=msg.conn {
-					_,err:=cl.Write([]byte(msg.msg))
-					checkError(err)
+				if cl.conn!=msg.conn {
+					cl.outMesg<-msg.msg
 				}
 			}
 		}
 	}(serv)
 
-	MES = &serv
+	MES = serv
 	
 	if(MES!=nil) {
 		return MES
@@ -67,18 +70,35 @@ func (mes *multiEchoServer) Start(port int) error {
 			log.Fatal(err)
 			return err
 		}
+		
+		
 		go func(c net.Conn) {
-			mes.clients = append(mes.clients,c)
+			defer c.Close()	
+			outChan := make(chan string,6)
+				
+			mes.clients = append(mes.clients,Clients{conn: c,outMesg:outChan})
+
 			go func(c net.Conn) {
-				for {
-					res,err:= ioutil.ReadAll(c)
+				for{
+					str:=<-outChan 
+					_,err:=c.Write([]byte(str))
 					checkError(err)
-					temp := Message{msg: string(res),conn: c}
-					go func(m Message) { 
-						mes.inMesg <- m	
-					}(temp)
 				}
 			}(c)
+
+			for {
+				line,err:=bufio.NewReader(c).ReadBytes('\n')
+				if err!= nil && err.Error()=="EOF" {
+					break;
+				}
+				checkError(err)
+				temp := Message{msg: string(line),conn: c}
+				fmt.Println("got Msg: "+temp.msg)
+				go func(m Message) { 
+					mes.inMesg <- m	
+				}(temp)
+			}
+
 		}(conn)
 
 		mes.numClients++;
@@ -99,6 +119,6 @@ func (mes *multiEchoServer) Count() int {
 
 func checkError(err error) {
 	if(err!=nil) {
-		fmt.Fprintf(os.Stderr,"Error : %s",err.Error())
+		fmt.Fprintf(os.Stderr,"Error : %s \n",err.Error())
 	}
 }

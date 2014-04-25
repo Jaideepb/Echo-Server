@@ -2,6 +2,11 @@ package main
 
 import (
 	"fmt"
+	"os"
+	"net"
+	"bufio"
+//	"io"
+	"time"
 )
 
 const (
@@ -20,20 +25,47 @@ func main()  {
 	}	
 	
 	addr:= os.Args[1]
-	
 	conn,err:= net.Dial("tcp",addr)
 	checkError(err)
 
-	//_,err= conn.Write([]byte("Hello\r\n"))
-	//checkError(err)
-	
+	sync :=make(chan int)
+
+	go func(c net.Conn) {
 		
+		for {
+			bio:= bufio.NewReader(os.Stdin)
+			line,_,err:=bio.ReadLine()
+			mesg:= string(line)
+			mesg+="\n"
+
+			checkError(err)
+			if(err!=nil) {
+				break
+			}
+			
+			c.Write([]byte(mesg))
+		}
+		sync<-1
+	}(conn)
+	go ReadFromSer(conn)
 	
+	<-sync
 	os.Exit(0)
+}
+
+func ReadFromSer(c net.Conn) {
+	for{		
+		time.Sleep(10*time.Second)
+		var b []byte
+		b=make([]byte,100)
+		c.Read(b)
+		fmt.Printf(string(b))
+	}
 }
 
 func checkError(err error) {
 	if(err!=nil) {
 		fmt.Fprintf(os.Stderr,"Error: %s",err.Error())
+		os.Exit(1)
 	}
 }
